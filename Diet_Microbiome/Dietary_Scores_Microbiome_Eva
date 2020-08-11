@@ -1,0 +1,703 @@
+Dietary Scores-Microbiome Project
+----------------------------
+
+Content
+1. Subsetting data 
+2. Dietary Scores
+  a alternate Mediterannean Diet (aMED) 
+  b Healthy Eating Index (HEI) 
+  c LifeLines Diet Score (LLDS) 
+  d Protein Score 
+3. Microbial Diversity;
+  a. Alpha Diversity 
+  b. Beta Diversity 
+4. Correlating Dietary Scores To Covariates 
+
+
+Creator: Eva Schuttert 
+
+Year: 2020
+
+Last updated: 11 august 2020 
+
+--------------------------------
+
+1. Subsetting data 
+#Datafile 1 
+LLD_Food_Score <- read.csv("~/R/LLD_Food_Score_BMIetc.txt")
+LLD_Food_Score[,c(1)]<- NULL
+
+#Datafile 2 
+Metadata<- read.csv("~/R/Metadata_LLD_complete.xlsx - Completemetadata_drugs.txt.csv", dec=",")
+Metadata <- Metadata [,-2]
+Metadata[,c(2,3,9,11,12,50)]<- NULL #sex, age, bmi, ppi, smoke, irritable-bowel-syndrome, double columns  
+
+#Merge 
+Metadata$Row.names <- Metadata$UMCGIBDResearchIDorLLDeepID 
+Metadata_Foodscore <- merge(LLD_Food_Score, Metadata, by='Row.names')
+Metadata_Foodscore[,c(1)]<- NULL
+Metadata_Foodscore[,c(2,8)]<- NULL
+
+rm(LLD_Food_Score)
+rm(Metadata)
+
+#remove IBD in controls and strict IBS 
+Metadata_Foodscore<-Metadata_Foodscore[!grepl("yes", Metadata_Foodscore$IBDinControls),] #remove IBD in controls
+Metadata_Foodscore<-Metadata_Foodscore[!grepl("yes", Metadata_Foodscore$Strict_IBS),]    #remove Strict IBS 
+Metadata_Foodscore<-Metadata_Foodscore[!grepl("yes", Metadata_Foodscore$Irritable_bowel_syndrome),] #remove self reported IBS 
+#summary(Metadata_Foodscore$BMI) #   Min.16.70 Median 24.7  Max.  44.90 #<18.5 (underweight) and > 40 (morbid obesity)
+Metadata_Foodscore<-Metadata_Foodscore[!(Metadata_Foodscore$BMI <18.5 | Metadata_Foodscore$BMI > 40),] #remove underweight / overweight. 
+Metadata_Foodscore[,c("IBDinControls", "Strict_IBS", "Irritable_bowel_syndrome", "UMCGIBDResearchIDorLLDeepID.y")]<- NULL #removes IBS strict and IBD   
+
+write.csv(Metadata_Foodscore, file = "~/R/LLD_Food_Score_BMIetc1.txt")
+
+
+2. Dietary Score 
+---------------------------
+
+2a. aMED 
+-----------
+aMED Score, Dietary-scores_Mediterannean_Diet_Score
+adapted from Fung_et_al
+ 
+#ffq data, rows is samples, column is foodgroups   
+MDS<-data
+
+#Positive consumption above median gets 1 points, below median 0 points. 
+
+#1 Vegetables,  "group_vegetables" includes; "vegetables_cooked_nobutter, vegetables_stirfried, vegetables_cooked_butter"
+veg.total <- MDS$vegetables_cooked_nobutter + MDS$vegetables_stirfried + MDS$vegetables_cooked_butter
+#veg.total<-MDS$group_vegetables
+x<-median(veg.total)                    
+MDS$veg.points <- ifelse(veg.total>= x, 1, 0)
+
+#2 Legumes, only 1 column legumes in database; "legumes" 
+leg.total<- MDS$legumes
+x<- median(leg.total)
+MDS$leg.points <- ifelse(leg.total>= x, 1, 0)
+
+#3 fruits,  "fruitjuice","fruit" (group_fruits contains applesauce)
+fruit.total<-MDS$fruit+MDS$fruitjuice  
+x<-median(fruit.total)  
+MDS$fruit.points<- ifelse(fruit.total>= x, 1, 0)
+
+#4 nuts, "group_nuts" consists of peanutbutter, nut_d, snack_nut
+#nut.total<-MDS$group_nuts
+nut.total <- MDS$nut_d + MDS$snack_nut + MDS$peanutbutter
+x<-median(nut.total)
+MDS$nut.points<-ifelse(nut.total>= x, 1, 0)
+
+#5 whole grains, "bread"
+whgrains.total<-MDS$bread
+x<-median(whgrains.total)
+MDS$whgrains.points<-ifelse(whgrains.total>= x, 1, 0)
+
+#6 fish, group_fish contains herring_salted, fish_white_fried, fish_lean, fish_fatty, fish_other, fish_prepared_fat
+#fish.total<-MDS$group_fish
+fish.total <- MDS$herring_salted + MDS$fish_white_fried + MDS$fish_lean + MDS$fish_fatty + MDS$fish_other + MDS$fish_prepared_fat
+x<-median(fish.total)
+MDS$fish.points<-ifelse(fish.total>= x, 1, 0)
+
+#7 red and processed meats; containing: sausage_smoked, meats_other_cold_cuts, meat, beef_lean, beef_fat
+#pork_lean, pork_fat, pork_processed, meats_fat, snack_meats
+meat.total<- MDS$sausage_smoked + MDS$meat + MDS$meats_fat+ MDS$meats_other+ MDS$beef_fat+ MDS$beef_lean + 
+  MDS$pork_fat + MDS$pork_lean + MDS$pork_processed + MDS$snack_meats
+x<-median(meat.total)
+MDS$meat.points<-ifelse(meat.total>= x, 0, 1)
+
+#8 alcohol; group_alcohol consist of beer, wine_red, wine_white, wine_fort, spirits, other_alc_drinks
+#  1 point if 10-20 g/d (1-2 glasses a day),  1 glas alcohol is 10 g / day 
+#summary(MDS$group_alcohol)
+MDS$group_alcohol <- MDS$beer + MDS$wine_red + MDS$wine_white + MDS$wine_fort + MDS$spirits + MDS$other_alc_drinks
+MDS$alcohol.points<-ifelse((MDS$group_alcohol >=10 & MDS$group_alcohol <= 20), 1, 0 ) 
+
+#9 M/S ratio no data 
+
+#add the points together [max amount of 8 points, min amount of 0 points]
+MDS$aMED <- MDS$veg.points + MDS$leg.points + MDS$fruit.points + MDS$nut.points + 
+  MDS$whgrains.points + MDS$fish.points + MDS$meat.points + MDS$alcohol.points
+
+#hist(MDS$aMED, breaks=-1:8)
+
+
+
+2b. HEI 
+-----------
+# Healthy Eating Index, HEI 2010, LL Cluster 
+# adapted from Guenther et al. 2013
+
+#data FFQ gram/day 
+HEI<-data
+
+#packages
+library(dplyr)
+
+# more points if higher intake: Total Fruit, whole fruit, total vegetables, greens and beans,
+#                               whole grains, dairy, Total Protein Foods, Seafood and Plant Proteins   
+# more points if lower intake: Fatty acids, refined grains, sodium, empty calories 
+
+
+#Components need to be divided by calories dived by 1000 to get per 1000 calorie amount
+Kcal<- HEI$SUMOFKCAL/1000
+
+# ++++ ADEQUACY COMPONENTS ++++ #
+
+###Whole fruit###Only whole fruit and does not make use of eg fruitpies etc, in our data "fruit" 
+HEI$wholefruit<-HEI$fruit/Kcal
+HEI$wholefruit.points<- ntile(HEI$wholefruit, 6)-1  #divide into quintiles 
+
+###Total Fruit ### "fruit" "fruitjuice"
+HEI$totalfruit<- (HEI$fruit+HEI$fruitjuice)/Kcal
+HEI$totalfruit.points<- ntile(HEI$totalfruit, 6)-1 
+
+###Total Vegetables ### "group_vegetables" consisting of: "vegetables_cooked_nobutter" "vegetables_stirfried" "vegetables_cooked_butter"
+#HEI$totalvegetables<- HEI$group_vegetables/Kcal
+HEI$totalvegetables<- (HEI$vegetables_cooked_nobutter + HEI$vegetables_cooked_butter + HEI$vegetables_stirfried)/Kcal
+HEI$totalvegetables.points<-ntile(HEI$totalvegetables,6)-1
+
+###Greans and Beans ### "legumes"
+HEI$greensandbeans<- HEI$legumes/Kcal
+HEI$greensandbeans.points<- ntile(HEI$greensandbeans,6)-1
+
+###wholegrains ### "bread"
+HEI$wholegrains<-HEI$bread/Kcal
+HEI$wholegrains.points<- ntile(HEI$wholegrains,11)-1
+
+###dairy ### group cheese(cheese_20, cheese_40, cheese_48, cheese_other_cream_cheese, cheese_d, snack_cheese)
+#            group dairy (breakfast_drink, milk_whole, milk_semiskimmed
+#milk_skimmed, buttermilk, chocolatemilk, yoghurt_drink_added_sugar, yoghurt_drink_other, custard_ff
+#yoghurt_ff, yoghurt_lf, yoghurt_lf_fruits, fromage_frais_fruits, porridge, other_custard_yoghurt_fromagefrais
+#icecream_dairy, whipped_cream, coffeecreamer_ff, coffeecreamer_hf, coffeecreamer_p, milk_coffee) #21 foodsitems 
+HEI$group_cheese<-(HEI$cheese_20 + HEI$cheese_40 + HEI$cheese_48 + HEI$cheese_other + HEI$cheese_d + HEI$snack_cheese)
+HEI$group_dairy <- (HEI$breakfast_drink + HEI$milk_whole + HEI$milk_semiskimmed + HEI$milk_skimmed + HEI$buttermilk +
+                  HEI$chocolatemilk + HEI$yoghurt_drink_added_sugar + HEI$yoghurt_drink_other + HEI$custard_ff + 
+                  HEI$yoghurt_ff + HEI$yoghurt_lf + HEI$yoghurt_lf_fruits + HEI$fromage_frais_fruits + HEI$porridge + 
+                  HEI$other_custard_yoghurt_fromagefrais + HEI$icecream_dairy + HEI$whipped_cream + HEI$coffeecreamer_ff + 
+                  HEI$coffeecreamer_hf + HEI$coffeecreamer_p + HEI$milk_coffee)
+HEI$dairy<-(HEI$group_cheese + HEI$group_dairy)/Kcal
+HEI$dairy.points<- ntile(HEI$dairy,11)-1
+
+###Total Protein Foods ### group_meat, group_egg + #greensandbeans +# seafood and plant protein 
+#group_meat; sausage_smoked_cold_cuts, meats_other_cold_cuts, meat, beef_lean, beef_fat, pork_lean, pork_fat
+#           pork_processed, meats_fat, chicken, other_meat_poultry, gravy, snack_meats
+HEI$group_meat <- (HEI$sausage_smoked + HEI$meats_other + HEI$meat + HEI$beef_lean + HEI$beef_fat + HEI$pork_lean + 
+                  HEI$pork_fat + HEI$pork_processed + HEI$meats_fat + HEI$chicken + HEI$other_meat_poultry + HEI$gravy + HEI$snack_meats)
+HEI$group_eggs <- HEI$egg_baked + HEI$egg_cooked
+HEI$group_fish <- HEI$herring_salted + HEI$fish_white_fried + HEI$fish_lean + HEI$fish_fatty + HEI$fish_other + HEI$fish_prepared_fat 
+HEI$group_nuts <- HEI$nut_d + HEI$snack_nut + HEI$peanutbutter
+
+
+HEI$TPF<- (HEI$group_meat + HEI$group_eggs + HEI$legumes + HEI$group_fish + HEI$group_nuts)/Kcal 
+HEI$TPF.points <-ntile(HEI$TPF,6)-1
+
+###Seafood and plant proteins ### fish and nuts 
+HEI$SFPP<- (HEI$group_fish+ HEI$group_nuts)/Kcal 
+HEI$SFPP.points<-ntile(HEI$SFPP,6)-1
+
+###Fatty acids ### no data 
+
+###Refined Grains### "porridge" "pasta" ""rice" "cereals" "crackers" "rolls" 
+HEI$refinedgrains<- (HEI$porridge + HEI$pasta + HEI$rice + HEI$cereals + HEI$crackers + HEI$rolls)/Kcal
+HEI$refinedgrains.points<- ntile(desc(HEI$refinedgrains), 11) -1
+
+###Sodium ### no data 
+
+###Empty Calories### 
+#This category is in kcal/day instead of gram/day 
+#alcohol, coffee, tea, nonalc_drinks, pastry, prepared meal, sauces, savoury_snacks, sugar_sweets, sweet spreads, dairy 
+HEI$group_alcohol <- HEI$beer + HEI$wine_red + HEI$wine_white + HEI$wine_fort + HEI$spirits + HEI$other_alc_drinks
+HEI$group_nonalc_drinks <- rowSums(HEI[,c("softdrink_sugar", "softdrink_no_sugar", "beer_af")]) 
+HEI$group_pastry <- rowSums(HEI[,c( "pasta", "biscuits_s", "cake", "pastry", "spiced_cake")])
+HEI$group_prepared_meal <- rowSums(HEI[,c("ready_meals_chinese_indian", "meals_fast_food", "ready_meals_other","pizza" )]) 
+HEI$group_sauces <- (HEI$sauce_hot + HEI$mayonaise + HEI$non_red_sauces + HEI$non_red_sauces_snack + 
+                    HEI$saladdressing_f + HEI$saladdressing_w + HEI$mayonaise_snack)
+HEI$group_savoury_snacks <- rowSums(HEI[,c("sandwichspread_butter","snack_savoury_hot", "crisps", "salad_toast")]) 
+HEI$group_sugar_sweets <- rowSums(HEI[,c("chocolatespreads",  "spreads_sweet" ,"sugar_yoghurt", "sugar_coffee" ,
+                                         "sugar_tea" , "candybars","chocolate", "sweets")])
+HEI$group_dairy <- (HEI$breakfast_drink + HEI$milk_whole + HEI$milk_semiskimmed + HEI$milk_skimmed + HEI$buttermilk +
+                      HEI$chocolatemilk + HEI$yoghurt_drink_added_sugar + HEI$yoghurt_drink_other + HEI$custard_ff + 
+                      HEI$yoghurt_ff + HEI$yoghurt_lf + HEI$yoghurt_lf_fruits + HEI$fromage_frais_fruits + HEI$porridge + 
+                      HEI$other_custard_yoghurt_fromagefrais + HEI$icecream_dairy + HEI$whipped_cream + HEI$coffeecreamer_ff + 
+                      HEI$coffeecreamer_hf + HEI$coffeecreamer_p + HEI$milk_coffee)  
+HEI$emptycalories<- (HEI$group_alcohol + HEI$coffee + HEI$tea + HEI$group_nonalc_drinks
+                     + HEI$group_pastry + HEI$group_prepared_meal + HEI$group_sauces
+                     + HEI$group_savoury_snacks + HEI$group_sugar_sweets + HEI$group_dairy)
+
+
+#Anything with over 50% of total energy from empty calories gets 0, 
+#Anything with under 19% of total energy from empty calories gets 20 points. 
+#everything inbetween should be divided in strata 
+
+totalKCal<- HEI$SUMOFKCAL
+HEI$emptycaloriesperc <- HEI$emptycalories / HEI$SUMOFKCAL
+summary(HEI$emptycaloriesperc)
+#from here I could not do with my database, so I am not sure if it works. 
+x<- HEI$emptycaloriesperc
+HEI$emptycalorie.points<- ifelse(x >= 0.5, 0, 
+                              ifelse(x < 0.5 & x >= 0.4845, 1, 
+                                     ifelse(x < 0.4845 & x>=0.469, 2,
+                                            ifelse(x < 0.469 & x>= 0.4535 , 3,
+                                                   ifelse(x < 0.4535 & x >=0.438, 4,
+                                                          ifelse(x < 0.438 & x>= 0.4225, 5, 
+                                                                 ifelse(x < 0.4225 & x>=0.407, 6,
+                                                                        ifelse(x < 0.407 & x>= 0.3915, 7,
+                                                                               ifelse(x < 0.3915 & x>= 0.376, 8,
+                                                                                      ifelse(x < 0.376 & x>0.3605, 9,
+                                                                                             ifelse(x < 0.3605 & x >= 0.345, 10, 
+                                                                                                    ifelse(x < 0.345 & x>= 0.3295, 11,
+                                                                                                           ifelse(x < 0.3295 & x>= 0.314 , 12,
+                                                                                                                  ifelse(x < 0.314 & x >= 0.2985, 13,
+                                                                                                                         ifelse(x < 0.2985 & x>= 0.283, 14, 
+                                                                                                                                ifelse(x < 0.283 & x>=0.2675, 15,
+                                                                                                                                       ifelse(x < 0.2675 & x>=0.252, 16,
+                                                                                                                                              ifelse(x < 0.252 & x>= 0.2365, 17,
+                                                                                                                                                     ifelse(x < 0.2365 & x >=0.221, 18,
+                                                                                                                                                            ifelse(x < 0.221 & x>0.20559, 19, 20))))))))))))))))))))
+
+
+
+#this is the way I calculated it, with dividing it into strata, like the other categories. 
+#HEI$emptycalorie.points<- ntile(desc(HEI$emptycaloriesperc), 21)-1
+
+###Total Score ### 
+all.components <- cbind(HEI$totalfruit.points, HEI$wholefruit.points, HEI$totalvegetables.points, HEI$greensandbeans.points, 
+                        HEI$wholegrains.points, HEI$dairy.points, HEI$TPF.points, HEI$SFPP.points, HEI$refinedgrains.points, HEI$emptycalorie.points)
+
+HEI$score<- (HEI$totalfruit.points + HEI$wholefruit.points + HEI$totalvegetables.points + HEI$greensandbeans.points +HEI$wholegrains.points+ HEI$dairy.points+ HEI$TPF.points+HEI$SFPP.points+ HEI$refinedgrains.points + HEI$emptycalorie.points)
+#hist(HEI$score) #there is a maximum score of 80 and a minimum of 0, LLDEEP database had min 15 and max 70. 
+
+
+
+2c. LLDS 
+------
+#LifeLines Diet Scores 
+
+# Positive groups(9); vegetables, fruit, whole grain products, legumes and nuts, 
+#         fish, oils and soft margarines, unsweetened dairy, coffee and tea
+# Negative groups(3); red and processed meat, butter and hard margarines and sugar-sweetened beverages
+# Intake of the food groups was expressed in grams per 1000 kilocalories (kcal)
+# Intake divided in quintiles, score 0 to 4, total score max 48 
+
+library(dplyr)
+
+LLDS <- read.delim("~/R/LLD_Food_Score_BMIetc.txt")
+
+#Components need to be divided by calories dived by 1000 to get per 1000 calorie amount
+Kcal<- LLDS$SUMOFKCAL/1000
+
+#Positive Groups 
+
+#Vegetables, group_vegetables
+LLDS$vegetables <- LLDS$group_vegetables / Kcal
+LLDS$vegetables.points <- ntile (LLDS$vegetables, 5)-1
+
+#Fruit; fruit 
+LLDS$wholefruit <- LLDS$fruit / Kcal 
+LLDS$fruit.points <- ntile (LLDS$wholefruit, 5)-1
+
+#Whole Grains; bread
+LLDS$wholegrains <- LLDS$bread / Kcal 
+LLDS$wholegrains.points <- ntile (LLDS$wholegrains, 5)-1
+
+#Legumes and Nuts 
+LLDS$legnut<- LLDS$legumes + LLDS$group_nuts 
+LLDS$legnut <- LLDS$legnut / Kcal 
+LLDS$legnuts.points <- ntile (LLDS$legnut,5)-1
+
+#Fish; group_fish
+LLDS$fish <- LLDS$group_fish / Kcal 
+LLDS$fish.points <- ntile (LLDS$fish, 5)-1
+
+#Oils and soft margarines; Margarine spread for bread, salad dressing, mayonnaise
+LLDS$oilsmargarines<-LLDS$margarine_lfb + LLDS$saladdressing_f + LLDS$saladdressing_w + LLDS$mayonaise + LLDS$mayonaise_snack
+LLDS$oilsmargarines <- LLDS$oilsmargarines / Kcal 
+LLDS$oilsmargarines.points <- ntile (LLDS$oilsmargarines, 5)-1
+
+#Unsweetened Dairy; Semi-skimmed milk, low-fat milk, buttermilk, low-fat yoghurt, full-fat yoghurt, milk in coffee 
+LLDS$unsweetdairy <- LLDS$milk_whole + LLDS$milk_semiskimmed + LLDS$milk_skimmed + LLDS$buttermilk + 
+  LLDS$yoghurt_drink_other + LLDS$yoghurt_ff + LLDS$yoghurt_lf + LLDS$milk_coffee
+LLDS$unsweetdairy <- LLDS$unsweetdairy / Kcal 
+LLDS$unsweetdairy.points <- ntile (LLDS$unsweetdairy, 5)-1
+
+#Coffee 
+#LLDS$group_coffee
+LLDS$coffee <- LLDS$group_coffee / Kcal 
+LLDS$coffee.points <- ntile (LLDS$coffee, 5)-1
+
+#Tea
+#LLDS$group_tea
+LLDS$tea <- LLDS$group_tea / Kcal 
+LLDS$tea.points <- ntile (LLDS$tea, 5)-1
+
+#Negative groups 
+
+#red and processed meat: Deli meat, several types of beef  and pork, both processed and unprocessed
+#sausage_smoked_cold_cuts, meats_other_cold_cuts, meat, beef_lean, beef_fat, pork_lean, pork_fat, pork_processed, meats_fat snack_meats
+LLDS$redprocmeat <- LLDS$sausage_smoked + LLDS$meat + LLDS$meats_fat+ LLDS$meats_other+ LLDS$beef_fat+ LLDS$beef_lean + 
+  LLDS$pork_fat + LLDS$pork_lean + LLDS$pork_processed + LLDS$snack_meats
+LLDS$redprocmeat <- LLDS$redprocmeat / Kcal 
+LLDS$redprocmeat.points <- ntile(desc(LLDS$redprocmeat), 5) -1
+
+#butter and hard margarines; Butter/Margarine on bread, other spreads on bread, gravy
+LLDS$buttermar <- LLDS$butter_b + LLDS$butter_ob + LLDS$sandwichspread + LLDS$gravy 
+LLDS$buttermar <- LLDS$buttermar / Kcal 
+LLDS$buttermar.points <- ntile(desc(LLDS$buttermar), 5)-1
+
+#sugar-sweetened beverages; Breakfast drinks, soda or lemonade with sugar, fruit-drinks, fruit juice, alcohol-free beers
+LLDS$sugarsweetbev <- LLDS$softdrink_sugar + LLDS$breakfast_drink + LLDS$chocolatemilk
+  LLDS$fruitjuice + LLDS$beer_af + LLDS$yoghurt_drink_added_sugar 
+LLDS$sugarsweetbev <- LLDS$sugarsweetbev / Kcal 
+LLDS$sugarsweetbev.points <- ntile(desc(LLDS$sugarsweetbev), 5)-1
+
+#total points 
+LLDS$totalpoints <- LLDS$vegetables.points + LLDS$fruit.points + LLDS$wholegrains.points + LLDS$legnuts.points + 
+  LLDS$fish.points + LLDS$oilsmargarines.points + LLDS$unsweetdairy.points + LLDS$coffee.points + LLDS$tea.points + 
+  LLDS$redprocmeat.points + LLDS$buttermar.points + LLDS$sugarsweetbev.points
+
+summary(LLDS$totalpoints) # min 5 points, max 41 points, median and mean 24 points. 
+
+
+
+2d. Protein Score 
+--------
+#Protein Score LL Cluster 
+
+#Protein score is sum of 1) percentage of energy from total protein 
+#                        2) percentage of energy from plant to animal protein ratio  
+
+#Protein score - quantiles for protein to all calories 
+library(dplyr)
+
+phenosdiet<- data
+
+#Make database proteinscore, rows is samples, columns is foodgroups 
+proteinscore<-phenosdiet[,c("SUMOFEIWITTOT", "SUMOFEIWITPLANT", "SUMOFEIWITDIER","SUMOFKCAL") ]
+
+# 1. total protein score 
+# Protein (kcal) to all Kcal = energy-%, calculate  by multiplying by 4
+proteinscore$ProttoKcal <- ((proteinscore$SUMOFEIWITTOT*4)/(proteinscore$SUMOFKCAL))*100 #= identifcal to Prot_en
+
+#2. ntile gives scorepoint 
+proteinscore$TotProteinscore <- ntile(proteinscore$ProttoKcal, 11) -1   #score from zero to 10, so 11 bins
+
+#3. protein plant to protein animal 
+proteinscore$PlanttoAnimal <- (proteinscore$SUMOFEIWITPLANT*4)/(proteinscore$SUMOFEIWITDIER*4)  
+
+#5. protein animal to protein pant
+proteinscore$ScorePlantAnimalProt <- ntile(proteinscore$PlanttoAnimal, 11) - 1
+
+#6. sum protein score and plant protein score
+proteinscore$ScoreProtein <- proteinscore$TotProteinscore + proteinscore$ScorePlantAnimalProt
+ 
+#make histogram of distribution of points [max 20 points(2*10), min 0 points] 
+#hist(proteinscore$ScoreProtein, breaks=-1:20)
+#write.table(proteinscore, '../Desktop/proteinscore.txt', sep='\t')
+
+
+
+3. Microbial Diversity 
+-------------------------------
+
+3a. Alpha Diversity 
+----------
+library(vegan)
+library(ggplot2)
+library(ggpubr)
+
+#dataframe foodscores 
+LLD_FoodSCORE <- read.csv("~/R/LLD_Food_Score_BMIetc1.txt")
+rownames(LLD_FoodSCORE) <- LLD_FoodSCORE[,2]
+LLD_FoodSCORE$Row.names <- rownames(LLD_FoodSCORE)
+#subset dataframe 
+LLD_FoodSCORE[,c(1)]<- NULL
+
+#dataframe taxa - merge taxa and foodscores  
+taxa <- read.csv("~/R/LLD_taxa_filtered.txt", row.names=1)
+taxa$Row.names <- rownames(taxa)
+taxamerged <- merge(LLD_FoodSCORE, taxa, by='Row.names')
+rownames(taxamerged) <- taxamerged[,1]
+taxa <- taxamerged[,237:386] 
+
+rm(taxamerged)
+
+#Shannon: Alpha diversity diversity(df, index = "shannon" or "simpson")
+LLDEEP_shannon <- diversity(taxa, index = "shannon")  
+LLDEEP_shannon <- as.data.frame(LLDEEP_shannon)
+
+#Link data from taxa to data from dietartyscores by ID LLDEEP 
+rownames(LLD_FoodSCORE) <- LLD_FoodSCORE[,1]
+dfscores_deepa<- merge(LLDEEP_shannon, LLD_FoodSCORE, by='row.names') #1089 obs 
+dfscores_deepa$shannon <- dfscores_deepa$LLDEEP_shannon
+dfscores_deepa<- dfscores_deepa[,-3] #rownames.y 
+
+rm(LLDEEP_shannon, LLD_FoodSCORE)
+
+#plot Shannon with scores
+shannonprotein <-ggplot(dfscores_deepa,aes(y=shannon,x=PROTEINSCORE)) + geom_point() + geom_smooth(method="lm")+ theme_classic()
+shannonhei <-  ggplot(dfscores_deepa,aes(y=shannon,x=HEISCORE)) + geom_point() + geom_smooth(method="lm")+ theme_classic()
+shannonamed <- ggplot(dfscores_deepa,aes(y=shannon,x=AMEDSCORE)) + geom_point() + geom_smooth(method="lm")+ theme_classic()
+shannonllds <- ggplot(dfscores_deepa,aes(y=shannon,x=LLDS)) + geom_point() + geom_smooth(method="lm")+ theme_classic()
+
+ggarrange(shannonamed, shannonhei,shannonllds, shannonprotein, nrow =2, ncol = 2 )   #make figure of 4 plots together 
+
+#spearman correlation test Shannon and dietary scores 
+spearmanshannon1 <-cor.test(dfscores_deepa$shannon, dfscores_deepa$HEISCORE, method = c("spearman"), exact=F)
+spearmanshannon2 <-cor.test(dfscores_deepa$shannon, dfscores_deepa$PROTEINSCORE, method = c("spearman"), exact=F)
+spearmanshannon3 <-cor.test(dfscores_deepa$shannon, dfscores_deepa$AMEDSCORE, method = c("spearman"), exact=F) 
+spearmanshannon4 <-cor.test(dfscores_deepa$shannon, dfscores_deepa$LLDS, method = c("spearman"), exact=F)
+
+#Alpha diversity index: simpson, merge with data
+LLDEEP_simpson <- diversity(taxa, index = "simpson")
+LLDEEP_simpson<- as.data.frame(LLDEEP_simpson)
+dfscores_deepa<- merge(LLDEEP_simpson, LLD_FoodSCORE, by='row.names') #1089 obs 
+dfscores_deepa$simpson <- dfscores_deepa$LLDEEP_simpson
+dfscores_deepa<- dfscores_deepa[,-3]
+
+#ggplot Simpson and alpha diversity 
+a= ggplot(dfscores_deepa,aes(y=simpson,x=PROTEINSCORE)) + geom_point() +
+  geom_smooth(method="lm") + theme_classic()
+  ggtitle("Alpha Diversity Simpson- Protein Score")
+b= ggplot(dfscores_deepa,aes(y=simpson,x=HEISCORE)) + geom_point() + geom_smooth(method="lm") + 
+  ggtitle("Alpha Diversity Simpson- HEI")+ theme_classic()
+c= ggplot(dfscores_deepa,aes(y=simpson,x=AMEDSCORE)) + geom_point() + geom_smooth(method="lm") + 
+  ggtitle("Alpha Diversity Simpson- AMED")+ theme_classic()
+d= ggplot(dfscores_deepa,aes(y=simpson,x=LLDS)) + geom_point() + geom_smooth(method="lm") + theme_classic()
+
+ggarrange(a,b,c,d, nrow =2, ncol = 2 )   
+
+#alpha diversity index: inverse simpson 
+LLDEEP_simpsoninv <- diversity(taxa, index = "invsimpson")
+LLDEEP_simpsoninv<- as.data.frame(LLDEEP_simpsoninv)
+dfscores_deepa<- merge(LLDEEP_simpsoninv, LLD_FoodSCORE, by='row.names') #1089 obs 
+dfscores_deepa$simpsoninv <- dfscores_deepa$LLDEEP_simpsoninv
+dfscores_deepa<- dfscores_deepa[,-3]
+
+#ggplot inverse Simpson and alpha diversity 
+d=ggplot(dfscores_deepa,aes(y=simpsoninv,x=PROTEINSCORE)) + geom_point() +  geom_smooth(method="lm") 
+b=ggplot(dfscores_deepa,aes(y=simpsoninv,x=HEISCORE)) + geom_point() + geom_smooth(method="lm") 
+a=ggplot(dfscores_deepa,aes(y=simpsoninv,x=AMEDSCORE)) + geom_point() + geom_smooth(method="lm") 
+c=ggplot(dfscores_deepa,aes(y=simpsoninv,x=LLDS)) + geom_point() + geom_smooth(method="lm") 
+
+ggarrange(a,b,c,d, nrow =2, ncol = 2 )   
+
+#Multiple Linear Regression model alpha diversity (shannon) + dietary scores + covariates 
+library(sjPlot)
+library(jtools)
+
+#Alpha Diversity corrected variables that correlate with them 
+LLDSAlpha <- lm(shannon ~ LLDS + Sex + AgeAtFecalSampling + SmokeCurrentSmoker + Length + 
+                  Weight + Diet, data = dfscores_deepa)
+summary(LLDSAlpha)
+tab_model(LLDSAlpha)
+
+AMEDAlpha <- lm(shannon ~ AMEDSCORE + SmokeCurrentSmoker + BMI , data = dfscores_deepa)
+summary(AMEDAlpha)
+tab_model(AMEDAlpha)
+
+HEIAlpha <- lm(shannon ~ HEISCORE + AgeAtFecalSampling + SmokeCurrentSmoker, data = dfscores_deepa)
+summary(HEIAlpha)
+tab_model(HEIAlpha)
+
+ProteinAlpha <- lm(shannon ~ PROTEINSCORE  + SmokeCurrentSmoker, data = dfscores_deepa)
+summary(ProteinAlpha)
+tab_model(ProteinAlpha)
+
+tab_model(AMEDAlpha, HEIAlpha, LLDSAlpha, ProteinAlpha, show.ci = FALSE, auto.label = T, 
+          pred.labels = c("Intercept", "aMED", "Smoker", "BMI", "HEI", "Age (years)", "LLDS",
+                          "Sex(male)", "lenght", "Weight", "Diet(no)", "Diet(sometimes)", "Protein Score"),
+          dv.labels = c("aMED", "HEI", "LLDS", "Protein Score"))
+
+
+
+3a. Beta Diversity 
+----------
+#Beta Diversity and Dietary Scores
+
+#packages 
+library(vegan)
+library(ggplot2)
+library(readxl)
+library(RColorBrewer)
+library(gridExtra)
+
+#dataframe foodscores 
+LLD_FoodSCORE <- read.csv("~/R/LLD_Food_Score_BMIetc1.txt")
+rownames(LLD_FoodSCORE) <- LLD_FoodSCORE[,2]
+LLD_FoodSCORE$Row.names <- rownames(LLD_FoodSCORE)
+LLD_FoodSCORE[,c(1)]<- NULL
+
+#dataframe taxa, merge taxa with foodscores  
+taxa <- read.csv("~/R/LLD_taxa_filtered.txt", row.names=1)
+taxa$Row.names <- rownames(taxa)
+taxamerged <- merge(LLD_FoodSCORE, taxa, by='Row.names')
+rownames(taxamerged) <- taxamerged[,1]
+taxa <- taxamerged[,237:386] 
+
+rm(taxamerged)
+
+#beta diversity Bray Curtis LL DEEP 
+bcMat <- vegdist(taxa, method = "bray")  #Bray Curtis 
+pcoaMat <- cmdscale(bcMat, eig = T, k=5)    # 5 dimensions principal coordinates 
+
+#calculate variance 
+varianceLL <- eigenvals(pcoaMat)/sum(eigenvals(pcoaMat))  #all the variances 
+var_pc1 <- as.integer(varianceLL[1]*100) # Variance 1 
+var_pc2 <- as.integer(varianceLL[2]*100) # Variance 2 
+
+#converts PCoA result into readable dataframe 
+pcoaDFLL <- as.data.frame(pcoaMat$points)
+
+#merge with phenotype LL by rownames   
+rownames(LLD_FoodSCORE) <- LLD_FoodSCORE[,1]
+pcoaDFLL <- merge(pcoaDFLL, LLD_FoodSCORE, by='row.names') 
+
+#ggplots Dietary Scores - Bray Curtis V1 V2 
+bcamed <- ggplot(pcoaDFLL,aes_string(x="V1",y="V2", col = pcoaDFLL$AMEDSCORE)) + geom_point(size=2,alpha=1) +
+  xlab(paste0("V1, ",var_pc1,"% variance")) +
+  ylab(paste0("V2, ",var_pc2,"% variance")) +
+  ggtitle("aMED Score") + theme_classic()
+
+bchei<- ggplot(pcoaDFLL,aes_string(x="V1",y="V2", col=pcoaDFLL$HEISCORE)) + geom_point(size=2,alpha=1) +
+  xlab(paste0("V1, ",var_pc1,"% variance")) +
+  ylab(paste0("V2, ",var_pc2,"% variance")) +
+  ggtitle("HEI Score")+ theme_classic()
+
+bcprotein <- ggplot(pcoaDFLL,aes_string(x="V1",y="V2", col=pcoaDFLL$PROTEINSCORE)) + geom_point(size=2,alpha=1) +
+  xlab(paste0("V1, ",var_pc1,"% variance")) +
+  ylab(paste0("V2, ",var_pc2,"% variance")) +
+  ggtitle("Protein Score")+ theme_classic()
+
+bcllds<- ggplot(pcoaDFLL,aes_string(x="V1",y="V2", col=pcoaDFLL$LLDS)) + geom_point(size=2,alpha=1) +
+  xlab(paste0("V1, ",var_pc1,"% variance")) +
+  ylab(paste0("V2, ",var_pc2,"% variance")) +
+  ggtitle("LLDS")+ theme_classic()
+
+ggarrange(bcamed, bchei, bcllds, bcprotein, nrow =2, ncol = 2 )   
+
+#Correlate bray curtis to dietary scores 
+spearman <-cor.test(pcoaDFLL$V1, pcoaDFLL$HEISCORE, method = c("spearman"), exact=F) 
+spearman <-cor.test(pcoaDFLL$V1, pcoaDFLL$AMEDSCORE, method= c("spearman"), exact=F)  
+spearman <-cor.test(pcoaDFLL$V1, pcoaDFLL$PROTEINSCORE, method= c("spearman"), exact=F)  
+spearman <-cor.test(pcoaDFLL$V1, pcoaDFLL$LLDS, method= c("spearman"), exact=F)  
+
+#Adonis Analyis
+bcMat <- vegdist(taxa, method = "bray") 
+
+BMI <- pcoaDFLL[["BMI"]]
+Age <- pcoaDFLL [["AgeAtFecalSampling"]]
+Sex <-pcoaDFLL[["Sex"]] 
+Smoke <- pcoaDFLL [["SmokeCurrentSmoker"]] 
+Smoke[is.na(Smoke)]<-"no"                         
+Kcal <- pcoaDFLL [["SUMOFKCAL"]]
+Length <- pcoaDFLL [["Length"]]
+Weight <- pcoaDFLL [["Weight"]]
+Diet <- pcoaDFLL [["Diet"]]
+
+#proteinscore and LLDEEP bray curtis adonis 
+proteinscore <- pcoaDFLL[["PROTEINSCORE"]]  
+adprotein <- adonis(bcMat ~ + Smoke +PROTEINSCORE, data =pcoaDFLL  ,permutations=10000)
+adproteintable <- adprotein$aov.tab
+oneRow3 <- data.frame(Var="PROTEINSCORE",
+                      NR_nonNA=247,
+                      DF=adproteintable[1,1],
+                      SumsOfSqs=adproteintable[1,2],
+                      MeanSqs=adproteintable[1,3],
+                      FModel=adproteintable[1,4],
+                      R2=adproteintable[1,5],
+                      pval=adproteintable[1,6])
+
+#HEI and LLDEEP bray curtis adonis 
+heiscore <-pcoaDFLL[["HEISCORE"]]  
+adhei <- adonis(bcMat ~ Age + Smoke + heiscore, permutations=10000)
+adheitable <- adhei$aov.tab
+oneRow2 <- data.frame(Var="HEISCORE",
+                      NR_nonNA=247,
+                      DF=adheitable[1,1],
+                      SumsOfSqs=adheitable[1,2],
+                      MeanSqs=adheitable[1,3],
+                      FModel=adheitable[1,4],
+                      R2=adheitable[1,5],
+                      pval=adheitable[1,6])
+
+#aMED and LLDEEP bray curtis adonis 
+amed <-pcoaDFLL[["AMEDSCORE"]]  
+adamed <- adonis(bcMat ~ BMI + Smoke + amed, permutations=10000)
+adamedtable <- adamed$aov.tab
+oneRow1 <- data.frame(Var="AMEDSCORE",
+                      NR_nonNA=247,
+                      DF=adamedtable[1,1],
+                      SumsOfSqs=adamedtable[1,2],
+                      MeanSqs=adamedtable[1,3],
+                      FModel=adamedtable[1,4],
+                      R2=adamedtable[1,5],
+                      pval=adamedtable[1,6])
+
+#LLDS and LLDEEP bray curtis adonis 
+LLDS <-pcoaDFLL[["LLDS"]]  
+adLLDS <- adonis(bcMat ~ Sex + Age + Smoke +Length + Weight + LLDS, permutations=10000)
+adLLDStable <- adLLDS$aov.tab
+oneRow4 <- data.frame(Var="LLDS",
+                      NR_nonNA=247,
+                      DF=adLLDStable[1,1],
+                      SumsOfSqs=adLLDStable[1,2],
+                      MeanSqs=adLLDStable[1,3],
+                      FModel=adLLDStable[1,4],
+                      R2=adLLDStable[1,5],
+                      pval=adLLDStable[1,6])
+
+Adonis_corrected <- rbind.data.frame(oneRow1,oneRow2, oneRow4, oneRow3)
+grid.table(Adonis_corrected[1:4, 1:8],theme = ttheme_minimal() )
+
+#write.table(Adonis_corrected, "~/R/adonisanalysis.txt")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
